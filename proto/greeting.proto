@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+option go_package = "./pkg/grpc";
+
+package greeting;
+
+// 1. サービスの定義（どんなメソッドがあるか）
+service Greeter {
+  // SayHello という関数は、HelloRequest を受け取り、HelloResponse を返す
+  rpc SayHello (HelloRequest) returns (HelloResponse);
+}
+
+// 2. メッセージの定義（データの型）
+message HelloRequest {
+  string name = 1; // 1番目のフィールド: 文字列型の name
+}
+
+message HelloResponse {
+  string message = 1; // 1番目のフィールド: 文字列型の message
+}
