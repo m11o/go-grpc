@@ -8,6 +8,8 @@ package greeting;
 service Greeter {
   // SayHello という関数は、HelloRequest を受け取り、HelloResponse を返す
   rpc SayHello (HelloRequest) returns (HelloResponse);
+
+  rpc Chat (stream HelloRequest) returns (stream HelloResponse);
 }
 
 // 2. メッセージの定義（データの型）
