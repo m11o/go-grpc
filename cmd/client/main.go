@@ -2,43 +2,69 @@ package main
 
 import (
 	"context"
-	"flag"
+	"io"
 	"log"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	// 生成されたパッケージをインポート
 	pb "go-grpc/pkg/grpc"
 )
 
 func main() {
-	// コマンドライン引数で名前を指定できるようにする（デフォルトは "World"）
-	name := flag.String("name", "World", "Name to greet")
-	flag.Parse()
-
-	// 1. サーバーに接続 (localhost:8080)
-	// ※ 本番ではSSL/TLSを使いますが、練習なので insecure (暗号化なし) を使います
+	// 1. サーバーに接続
 	conn, err := grpc.NewClient("localhost:8080", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("did not connect: %v", err)
 	}
 	defer conn.Close()
-
-	// 2. クライアントを作成
 	c := pb.NewGreeterClient(conn)
 
-	// 3. タイムアウトを設定（1秒以内に返事がなければ諦める）
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	// 4. サーバーの SayHello メソッドを呼び出す
-	r, err := c.SayHello(ctx, &pb.HelloRequest{Name: *name})
+	// 2. 双方向ストリーミングを開始
+	// (コンテキストとストリームの作成)
+	stream, err := c.Chat(context.Background())
 	if err != nil {
-		log.Fatalf("could not greet: %v", err)
+		log.Fatalf("error creating stream: %v", err)
 	}
 
-	// 5. 結果を表示
-	log.Printf("Greeting: %s", r.GetMessage())
+	// 終了待ち受け用のチャネル
+	waitc := make(chan struct{})
+
+	// 3. 【送信担当】別のゴルーチンでメッセージを送り続ける
+	go func() {
+		names := []string{"Alice", "Bob", "Charlie", "Dave", "Eve"}
+		for _, name := range names {
+			log.Printf("Sending message: %s", name)
+
+			// メッセージ送信
+			if err := stream.Send(&pb.HelloRequest{Name: name}); err != nil {
+				log.Fatalf("failed to send: %v", err)
+			}
+
+			// 1秒待ってから次を送る（チャットっぽくするため）
+			time.Sleep(1 * time.Second)
+		}
+		// すべて送り終わったら「送信終了」をサーバーに伝える
+		stream.CloseSend()
+	}()
+
+	// 4. 【受信担当】メインスレッドでサーバーからの返事を受け取り続ける
+	go func() {
+		for {
+			in, err := stream.Recv()
+			if err == io.EOF {
+				// サーバーからの通信が終わったらループを抜ける
+				close(waitc)
+				return
+			}
+			if err != nil {
+				log.Fatalf("failed to receive: %v", err)
+			}
+			log.Printf("Received: %s", in.GetMessage())
+		}
+	}()
+
+	// 5. 受信が終わるまでここで待機
+	<-waitc
 }

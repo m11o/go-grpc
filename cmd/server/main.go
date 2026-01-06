@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 
@@ -30,6 +31,29 @@ func (s *server) SayHello(ctx context.Context, req *pb.HelloRequest) (*pb.HelloR
 	return &pb.HelloResponse{
 		Message: message,
 	}, nil
+}
+
+func (s *server) Chat(stream pb.Greeter_ChatServer) error {
+	for {
+		// 1. クライアントからのメッセージを受信
+		in, err := stream.Recv()
+		if err == io.EOF {
+			// クライアントが送信を終了した
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+
+		// 2. 受け取ったデータを使って返事を作る
+		name := in.GetName()
+		message := fmt.Sprintf("Hello, %s!", name)
+
+		// 3. サーバーからメッセージを送信
+		if err := stream.Send(&pb.HelloResponse{Message: message}); err != nil {
+			return err
+		}
+	}
 }
 
 func main() {
